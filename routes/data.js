@@ -199,34 +199,33 @@ const dataRoutes = (pool) => {
       
       console.log('Test query result:', testResult);
 
+      // daily-problem-history는 단일 테이블에서 모든 데이터 조회
       const [historyResult] = await pool.execute(
         `SELECT 
-          h.study_date,
-          h.university_id,
-          u.name as school_name,
-          uu.account,
-          uu.name as student_name,
-          uu.student_no,
-          h.study_type,
-          h.piece_name,
-          h.subject_group,
-          h.total_questions,
-          h.original_questions,
-          h.similar_questions,
-          h.total_solved,
-          h.original_solved,
-          h.similar_solved,
-          h.original_correct,
-          h.similar_correct,
-          h.total_correct,
-          h.total_accuracy,
-          h.original_accuracy,
-          h.similar_accuracy
-        FROM pulley_statistic.htht_daily_piece_problem_history h
-        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
-        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
-        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ?
-        ORDER BY h.study_date DESC
+          study_date,
+          university_id,
+          school_name,
+          account,
+          student_name,
+          student_no,
+          study_type,
+          piece_name,
+          subject_group,
+          total_questions,
+          original_questions,
+          similar_questions,
+          total_solved,
+          original_solved,
+          similar_solved,
+          original_correct,
+          similar_correct,
+          total_correct,
+          total_accuracy,
+          original_accuracy,
+          similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history 
+        WHERE university_id = ? AND study_date BETWEEN ? AND ?
+        ORDER BY study_date DESC
         LIMIT ${limitNum} OFFSET ${offset}`,
         [universityIdNum, startDate, endDate]
       );
@@ -322,10 +321,10 @@ const dataRoutes = (pool) => {
         `SELECT 
           h.study_date,
           h.university_id,
-          u.name as school_name,
-          uu.account,
-          uu.name as student_name,
-          uu.student_no,
+          h.school_name,
+          h.account,
+          h.student_name,
+          h.student_no,
           h.study_type,
           h.piece_name,
           h.subject_group,
@@ -343,13 +342,11 @@ const dataRoutes = (pool) => {
           h.original_accuracy,
           h.similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history h
-        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
-        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
         INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
         INNER JOIN pulley.lecture l ON m.lecture_id = l.id
         WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ? 
         AND m.lecture_id IN (${placeholders}) AND m.is_deleted = 0
-        ORDER BY h.study_date DESC
+        ORDER BY h.study_date DESC, l.name, h.account
         LIMIT ${limitNum} OFFSET ${offset}`,
         [universityIdNum, startDate, endDate, ...lectureIdArray]
       );
