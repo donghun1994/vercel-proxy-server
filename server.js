@@ -12,6 +12,14 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json());
 
+// 캐시 방지 미들웨어
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // DB 연결 설정
 const dbConfig = {
   host: process.env.DB_HOST || 'pulley-cluster.cluster-ce1us4oyptfa.ap-northeast-2.rds.amazonaws.com',
