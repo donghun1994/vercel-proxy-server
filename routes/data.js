@@ -189,6 +189,16 @@ const dataRoutes = (pool) => {
         offset
       });
 
+      // 간단한 테스트 쿼리 먼저 실행
+      const [testResult] = await pool.execute(
+        `SELECT COUNT(*) as count
+        FROM pulley_statistic.htht_daily_piece_problem_history 
+        WHERE university_id = ?`,
+        [universityIdNum]
+      );
+      
+      console.log('Test query result:', testResult);
+
       const [historyResult] = await pool.execute(
         `SELECT 
           study_date,
@@ -201,8 +211,8 @@ const dataRoutes = (pool) => {
         FROM pulley_statistic.htht_daily_piece_problem_history 
         WHERE university_id = ? AND study_date BETWEEN ? AND ?
         ORDER BY study_date DESC
-        LIMIT ? OFFSET ?`,
-        [universityIdNum, startDate, endDate, limitNum, offset]
+        LIMIT ${limitNum} OFFSET ${offset}`,
+        [universityIdNum, startDate, endDate]
       );
 
       // 전체 개수 조회
