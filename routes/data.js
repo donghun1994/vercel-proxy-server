@@ -395,7 +395,7 @@ const dataRoutes = (pool) => {
     }
   });
 
-  // 강의 다운로드
+  // 강의 다운로드 (CSV)
   router.get('/lecture-download', async (req, res) => {
     try {
       const { universityId, lectureIds, startDate, endDate } = req.query;
@@ -423,10 +423,10 @@ const dataRoutes = (pool) => {
         `SELECT 
           h.study_date,
           h.university_id,
-          u.name as school_name,
-          uu.account,
-          uu.name as student_name,
-          uu.student_no,
+          h.school_name,
+          h.account,
+          h.student_name,
+          h.student_no,
           h.study_type,
           h.piece_name,
           h.subject_group,
@@ -444,20 +444,58 @@ const dataRoutes = (pool) => {
           h.original_accuracy,
           h.similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history h
-        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
-        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
         INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
         INNER JOIN pulley.lecture l ON m.lecture_id = l.id
         WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ? 
         AND m.lecture_id IN (${placeholders}) AND m.is_deleted = 0
-        ORDER BY h.study_date DESC, h.htht_university_user_id, l.name`,
+        ORDER BY h.study_date DESC, l.name, h.account`,
         [universityIdNum, startDate, endDate, ...lectureIdArray]
       );
 
-      res.json({
-        success: true,
-        data: downloadResult
+      // CSV 헤더
+      const headers = [
+        '학습일자', '대학교', '학교명', '계정', '학생명', '학번', '학습유형', '학습지명', '과목군', '강의명',
+        '전체문제수', '원본문제수', '유사문제수', '전체풀이수', '원본풀이수', '유사풀이수',
+        '원본정답수', '유사정답수', '전체정답수', '전체정답률', '원본정답률', '유사정답률'
+      ];
+
+      // CSV 데이터 생성
+      const csvRows = [headers.join(',')];
+      
+      downloadResult.forEach(row => {
+        const csvRow = [
+          row.study_date,
+          row.university_id,
+          `"${row.school_name || ''}"`,
+          `"${row.account || ''}"`,
+          `"${row.student_name || ''}"`,
+          `"${row.student_no || ''}"`,
+          `"${row.study_type || ''}"`,
+          `"${row.piece_name || ''}"`,
+          `"${row.subject_group || ''}"`,
+          `"${row.lecture_name || ''}"`,
+          row.total_questions || 0,
+          row.original_questions || 0,
+          row.similar_questions || 0,
+          row.total_solved || 0,
+          row.original_solved || 0,
+          row.similar_solved || 0,
+          row.original_correct || 0,
+          row.similar_correct || 0,
+          row.total_correct || 0,
+          row.total_accuracy || 0,
+          row.original_accuracy || 0,
+          row.similar_accuracy || 0
+        ];
+        csvRows.push(csvRow.join(','));
       });
+
+      const csvContent = csvRows.join('\n');
+      const filename = `lecture_problem_history_${startDate}_${endDate}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\uFEFF' + csvContent); // BOM 추가로 한글 깨짐 방지
 
     } catch (error) {
       console.error('Get lecture download error:', error);
@@ -468,7 +506,7 @@ const dataRoutes = (pool) => {
     }
   });
 
-  // 일반 다운로드
+  // 일반 다운로드 (CSV)
   router.get('/download', async (req, res) => {
     try {
       const { universityId, startDate, endDate } = req.query;
@@ -484,39 +522,76 @@ const dataRoutes = (pool) => {
 
       const [downloadResult] = await pool.execute(
         `SELECT 
-          h.study_date,
-          h.university_id,
-          u.name as school_name,
-          uu.account,
-          uu.name as student_name,
-          uu.student_no,
-          h.study_type,
-          h.piece_name,
-          h.subject_group,
-          h.total_questions,
-          h.original_questions,
-          h.similar_questions,
-          h.total_solved,
-          h.original_solved,
-          h.similar_solved,
-          h.original_correct,
-          h.similar_correct,
-          h.total_correct,
-          h.total_accuracy,
-          h.original_accuracy,
-          h.similar_accuracy
-        FROM pulley_statistic.htht_daily_piece_problem_history h
-        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
-        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
-        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ?
-        ORDER BY h.study_date DESC, h.htht_university_user_id`,
+          study_date,
+          university_id,
+          school_name,
+          account,
+          student_name,
+          student_no,
+          study_type,
+          piece_name,
+          subject_group,
+          total_questions,
+          original_questions,
+          similar_questions,
+          total_solved,
+          original_solved,
+          similar_solved,
+          original_correct,
+          similar_correct,
+          total_correct,
+          total_accuracy,
+          original_accuracy,
+          similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history 
+        WHERE university_id = ? AND study_date BETWEEN ? AND ?
+        ORDER BY study_date DESC, account`,
         [universityIdNum, startDate, endDate]
       );
 
-      res.json({
-        success: true,
-        data: downloadResult
+      // CSV 헤더
+      const headers = [
+        '학습일자', '대학교', '학교명', '계정', '학생명', '학번', '학습유형', '학습지명', '과목군',
+        '전체문제수', '원본문제수', '유사문제수', '전체풀이수', '원본풀이수', '유사풀이수',
+        '원본정답수', '유사정답수', '전체정답수', '전체정답률', '원본정답률', '유사정답률'
+      ];
+
+      // CSV 데이터 생성
+      const csvRows = [headers.join(',')];
+      
+      downloadResult.forEach(row => {
+        const csvRow = [
+          row.study_date,
+          row.university_id,
+          `"${row.school_name || ''}"`,
+          `"${row.account || ''}"`,
+          `"${row.student_name || ''}"`,
+          `"${row.student_no || ''}"`,
+          `"${row.study_type || ''}"`,
+          `"${row.piece_name || ''}"`,
+          `"${row.subject_group || ''}"`,
+          row.total_questions || 0,
+          row.original_questions || 0,
+          row.similar_questions || 0,
+          row.total_solved || 0,
+          row.original_solved || 0,
+          row.similar_solved || 0,
+          row.original_correct || 0,
+          row.similar_correct || 0,
+          row.total_correct || 0,
+          row.total_accuracy || 0,
+          row.original_accuracy || 0,
+          row.similar_accuracy || 0
+        ];
+        csvRows.push(csvRow.join(','));
       });
+
+      const csvContent = csvRows.join('\n');
+      const filename = `problem_history_${startDate}_${endDate}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\uFEFF' + csvContent); // BOM 추가로 한글 깨짐 방지
 
     } catch (error) {
       console.error('Get download error:', error);
