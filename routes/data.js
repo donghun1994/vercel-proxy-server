@@ -464,7 +464,7 @@ const dataRoutes = (pool) => {
       
       downloadResult.forEach(row => {
         const csvRow = [
-          row.study_date,
+          row.study_date ? new Date(row.study_date).toISOString().split('T')[0] : '',
           row.university_id,
           `"${row.school_name || ''}"`,
           `"${row.account || ''}"`,
@@ -561,7 +561,7 @@ const dataRoutes = (pool) => {
       
       downloadResult.forEach(row => {
         const csvRow = [
-          row.study_date,
+          row.study_date ? new Date(row.study_date).toISOString().split('T')[0] : '',
           row.university_id,
           `"${row.school_name || ''}"`,
           `"${row.account || ''}"`,
