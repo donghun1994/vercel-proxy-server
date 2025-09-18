@@ -201,16 +201,32 @@ const dataRoutes = (pool) => {
 
       const [historyResult] = await pool.execute(
         `SELECT 
-          study_date,
-          total_questions,
-          total_solved,
-          total_correct,
-          total_accuracy,
-          original_accuracy,
-          similar_accuracy
-        FROM pulley_statistic.htht_daily_piece_problem_history 
-        WHERE university_id = ? AND study_date BETWEEN ? AND ?
-        ORDER BY study_date DESC
+          h.study_date,
+          h.university_id,
+          u.name as school_name,
+          uu.account,
+          uu.name as student_name,
+          uu.student_no,
+          h.study_type,
+          h.piece_name,
+          h.subject_group,
+          h.total_questions,
+          h.original_questions,
+          h.similar_questions,
+          h.total_solved,
+          h.original_solved,
+          h.similar_solved,
+          h.original_correct,
+          h.similar_correct,
+          h.total_correct,
+          h.total_accuracy,
+          h.original_accuracy,
+          h.similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history h
+        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
+        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
+        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ?
+        ORDER BY h.study_date DESC
         LIMIT ${limitNum} OFFSET ${offset}`,
         [universityIdNum, startDate, endDate]
       );
@@ -252,6 +268,264 @@ const dataRoutes = (pool) => {
         success: false,
         message: '일일 문제 이력을 가져오는 중 오류가 발생했습니다.',
         error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
+  // 강의별 학습 이력 조회
+  router.get('/lecture-history', async (req, res) => {
+    try {
+      const { universityId, lectureIds, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+      if (!universityId || !lectureIds || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: '모든 필드를 선택해주세요.'
+        });
+      }
+
+      // 파라미터 검증 및 변환
+      const universityIdNum = parseInt(universityId);
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+
+      if (isNaN(universityIdNum) || isNaN(pageNum) || isNaN(limitNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 파라미터입니다.'
+        });
+      }
+
+      const lectureIdArray = lectureIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      
+      if (lectureIdArray.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: '유효한 강의를 선택해주세요.'
+        });
+      }
+
+      const offset = (pageNum - 1) * limitNum;
+      const placeholders = lectureIdArray.map(() => '?').join(',');
+
+      console.log('Lecture history query:', {
+        universityId: universityIdNum,
+        lectureIds: lectureIdArray,
+        startDate,
+        endDate,
+        page: pageNum,
+        limit: limitNum,
+        offset
+      });
+
+      const [historyResult] = await pool.execute(
+        `SELECT 
+          h.study_date,
+          h.university_id,
+          u.name as school_name,
+          uu.account,
+          uu.name as student_name,
+          uu.student_no,
+          h.study_type,
+          h.piece_name,
+          h.subject_group,
+          l.name as lecture_name,
+          h.total_questions,
+          h.original_questions,
+          h.similar_questions,
+          h.total_solved,
+          h.original_solved,
+          h.similar_solved,
+          h.original_correct,
+          h.similar_correct,
+          h.total_correct,
+          h.total_accuracy,
+          h.original_accuracy,
+          h.similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history h
+        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
+        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
+        INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
+        INNER JOIN pulley.lecture l ON m.lecture_id = l.id
+        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ? 
+        AND m.lecture_id IN (${placeholders}) AND m.is_deleted = 0
+        ORDER BY h.study_date DESC
+        LIMIT ${limitNum} OFFSET ${offset}`,
+        [universityIdNum, startDate, endDate, ...lectureIdArray]
+      );
+
+      // 전체 개수 조회
+      const [countResult] = await pool.execute(
+        `SELECT COUNT(*) as total
+        FROM pulley_statistic.htht_daily_piece_problem_history h
+        INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
+        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ? 
+        AND m.lecture_id IN (${placeholders}) AND m.is_deleted = 0`,
+        [universityIdNum, startDate, endDate, ...lectureIdArray]
+      );
+
+      const total = countResult[0].total;
+      const totalPages = Math.ceil(total / limitNum);
+
+      res.json({
+        success: true,
+        data: {
+          history: historyResult,
+          pagination: {
+            currentPage: pageNum,
+            totalPages,
+            totalItems: total,
+            itemsPerPage: limitNum
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Get lecture history error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        universityId: req.query.universityId,
+        lectureIds: req.query.lectureIds,
+        startDate: req.query.startDate,
+        endDate: req.query.endDate
+      });
+      res.status(500).json({
+        success: false,
+        message: '강의별 학습 이력을 가져오는 중 오류가 발생했습니다.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
+  // 강의 다운로드
+  router.get('/lecture-download', async (req, res) => {
+    try {
+      const { universityId, lectureIds, startDate, endDate } = req.query;
+
+      if (!universityId || !lectureIds || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: '모든 필드를 선택해주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+      const lectureIdArray = lectureIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      
+      if (lectureIdArray.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: '유효한 강의를 선택해주세요.'
+        });
+      }
+
+      const placeholders = lectureIdArray.map(() => '?').join(',');
+
+      const [downloadResult] = await pool.execute(
+        `SELECT 
+          h.study_date,
+          h.university_id,
+          u.name as school_name,
+          uu.account,
+          uu.name as student_name,
+          uu.student_no,
+          h.study_type,
+          h.piece_name,
+          h.subject_group,
+          l.name as lecture_name,
+          h.total_questions,
+          h.original_questions,
+          h.similar_questions,
+          h.total_solved,
+          h.original_solved,
+          h.similar_solved,
+          h.original_correct,
+          h.similar_correct,
+          h.total_correct,
+          h.total_accuracy,
+          h.original_accuracy,
+          h.similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history h
+        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
+        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
+        INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
+        INNER JOIN pulley.lecture l ON m.lecture_id = l.id
+        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ? 
+        AND m.lecture_id IN (${placeholders}) AND m.is_deleted = 0
+        ORDER BY h.study_date DESC, h.htht_university_user_id, l.name`,
+        [universityIdNum, startDate, endDate, ...lectureIdArray]
+      );
+
+      res.json({
+        success: true,
+        data: downloadResult
+      });
+
+    } catch (error) {
+      console.error('Get lecture download error:', error);
+      res.status(500).json({
+        success: false,
+        message: '강의 다운로드 데이터를 가져오는 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
+  // 일반 다운로드
+  router.get('/download', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate } = req.query;
+
+      if (!universityId || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교, 시작일, 종료일을 모두 선택해주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+
+      const [downloadResult] = await pool.execute(
+        `SELECT 
+          h.study_date,
+          h.university_id,
+          u.name as school_name,
+          uu.account,
+          uu.name as student_name,
+          uu.student_no,
+          h.study_type,
+          h.piece_name,
+          h.subject_group,
+          h.total_questions,
+          h.original_questions,
+          h.similar_questions,
+          h.total_solved,
+          h.original_solved,
+          h.similar_solved,
+          h.original_correct,
+          h.similar_correct,
+          h.total_correct,
+          h.total_accuracy,
+          h.original_accuracy,
+          h.similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history h
+        LEFT JOIN pulley.htht_university u ON h.university_id = u.id
+        LEFT JOIN pulley.htht_university_user uu ON h.htht_university_user_id = uu.id
+        WHERE h.university_id = ? AND h.study_date BETWEEN ? AND ?
+        ORDER BY h.study_date DESC, h.htht_university_user_id`,
+        [universityIdNum, startDate, endDate]
+      );
+
+      res.json({
+        success: true,
+        data: downloadResult
+      });
+
+    } catch (error) {
+      console.error('Get download error:', error);
+      res.status(500).json({
+        success: false,
+        message: '다운로드 데이터를 가져오는 중 오류가 발생했습니다.'
       });
     }
   });
