@@ -1,6 +1,6 @@
 import express from 'express';
 
-export default (pool) => {
+const universitiesRoutes = (pool) => {
   const router = express.Router();
 
   // 대학교 목록 조회
@@ -26,3 +26,5 @@ export default (pool) => {
 
   return router;
 };
+
+export default universitiesRoutes;
