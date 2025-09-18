@@ -1,9 +1,9 @@
-const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
-const cors = require('cors');
-const mysql = require('mysql2/promise');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import cors from 'cors';
+import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -64,22 +64,29 @@ app.get('/db-test', async (req, res) => {
 });
 
 // API 라우트들
-app.use('/api/auth', require('./routes/auth')(pool, JWT_SECRET));
-app.use('/api/universities', require('./routes/universities')(pool));
-app.use('/api/data', require('./routes/data')(pool));
+import authRoutes from './routes/auth.js';
+import universitiesRoutes from './routes/universities.js';
+import dataRoutes from './routes/data.js';
 
-// Vercel 앱으로 프록시 (정적 파일들)
-app.use('/', createProxyMiddleware({
-  target: process.env.VERCEL_URL || 'https://university-learning-dashboard.vercel.app',
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api': '/api' // API는 로컬에서 처리
-  },
-  onError: (err, req, res) => {
-    console.error('Proxy error:', err);
-    res.status(500).json({ error: 'Proxy error' });
-  }
-}));
+app.use('/api/auth', authRoutes(pool, JWT_SECRET));
+app.use('/api/universities', universitiesRoutes(pool));
+app.use('/api/data', dataRoutes(pool));
+
+// API가 아닌 요청에 대한 기본 응답
+app.get('*', (req, res) => {
+  res.json({ 
+    message: 'This is a proxy server for API endpoints only. Please access the frontend at the Vercel URL.',
+    availableEndpoints: [
+      '/api/auth/login',
+      '/api/auth/logout', 
+      '/api/auth/me',
+      '/api/universities',
+      '/api/data/*',
+      '/health',
+      '/db-test'
+    ]
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Proxy server running on port ${PORT}`);

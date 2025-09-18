@@ -1,8 +1,8 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
-module.exports = (pool, JWT_SECRET) => {
+export default (pool, JWT_SECRET) => {
   const router = express.Router();
 
   // 로그인

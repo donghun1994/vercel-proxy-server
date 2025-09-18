@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-module.exports = (pool) => {
+const dataRoutes = (pool) => {
   const router = express.Router();
 
   // 강의 목록 조회
@@ -154,5 +154,70 @@ module.exports = (pool) => {
     }
   });
 
+  // 일일 문제 이력 조회
+  router.get('/daily-problem-history', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+      if (!universityId || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교, 시작일, 종료일을 모두 선택해주세요.'
+        });
+      }
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      const [historyResult] = await pool.execute(
+        `SELECT 
+          study_date,
+          total_questions,
+          total_solved,
+          total_correct,
+          total_accuracy,
+          original_accuracy,
+          similar_accuracy
+        FROM pulley_statistic.htht_daily_piece_problem_history 
+        WHERE university_id = ? AND study_date BETWEEN ? AND ?
+        ORDER BY study_date DESC
+        LIMIT ? OFFSET ?`,
+        [universityId, startDate, endDate, parseInt(limit), offset]
+      );
+
+      // 전체 개수 조회
+      const [countResult] = await pool.execute(
+        `SELECT COUNT(*) as total
+        FROM pulley_statistic.htht_daily_piece_problem_history 
+        WHERE university_id = ? AND study_date BETWEEN ? AND ?`,
+        [universityId, startDate, endDate]
+      );
+
+      const total = countResult[0].total;
+      const totalPages = Math.ceil(total / parseInt(limit));
+
+      res.json({
+        success: true,
+        data: {
+          history: historyResult,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages,
+            totalItems: total,
+            itemsPerPage: parseInt(limit)
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Get daily problem history error:', error);
+      res.status(500).json({
+        success: false,
+        message: '일일 문제 이력을 가져오는 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
   return router;
 };
+
+export default dataRoutes;
