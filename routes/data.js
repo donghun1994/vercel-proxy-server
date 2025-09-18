@@ -166,7 +166,28 @@ const dataRoutes = (pool) => {
         });
       }
 
-      const offset = (parseInt(page) - 1) * parseInt(limit);
+      // 파라미터 검증 및 변환
+      const universityIdNum = parseInt(universityId);
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+
+      if (isNaN(universityIdNum) || isNaN(pageNum) || isNaN(limitNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 파라미터입니다.'
+        });
+      }
+
+      const offset = (pageNum - 1) * limitNum;
+
+      console.log('Daily problem history query:', {
+        universityId: universityIdNum,
+        startDate,
+        endDate,
+        page: pageNum,
+        limit: limitNum,
+        offset
+      });
 
       const [historyResult] = await pool.execute(
         `SELECT 
@@ -181,7 +202,7 @@ const dataRoutes = (pool) => {
         WHERE university_id = ? AND study_date BETWEEN ? AND ?
         ORDER BY study_date DESC
         LIMIT ? OFFSET ?`,
-        [universityId, startDate, endDate, parseInt(limit), offset]
+        [universityIdNum, startDate, endDate, limitNum, offset]
       );
 
       // 전체 개수 조회
@@ -189,30 +210,38 @@ const dataRoutes = (pool) => {
         `SELECT COUNT(*) as total
         FROM pulley_statistic.htht_daily_piece_problem_history 
         WHERE university_id = ? AND study_date BETWEEN ? AND ?`,
-        [universityId, startDate, endDate]
+        [universityIdNum, startDate, endDate]
       );
 
       const total = countResult[0].total;
-      const totalPages = Math.ceil(total / parseInt(limit));
+      const totalPages = Math.ceil(total / limitNum);
 
       res.json({
         success: true,
         data: {
           history: historyResult,
           pagination: {
-            currentPage: parseInt(page),
+            currentPage: pageNum,
             totalPages,
             totalItems: total,
-            itemsPerPage: parseInt(limit)
+            itemsPerPage: limitNum
           }
         }
       });
 
     } catch (error) {
       console.error('Get daily problem history error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        universityId: req.query.universityId,
+        startDate: req.query.startDate,
+        endDate: req.query.endDate
+      });
       res.status(500).json({
         success: false,
-        message: '일일 문제 이력을 가져오는 중 오류가 발생했습니다.'
+        message: '일일 문제 이력을 가져오는 중 오류가 발생했습니다.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   });
