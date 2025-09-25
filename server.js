@@ -92,14 +92,16 @@ app.get('/db-test', async (req, res) => {
   }
 });
 
-// API 라우트들
+// API 라우트들 (순서가 중요함 - * 라우트보다 앞에 배치)
 import authRoutes from './routes/auth.js';
 import universitiesRoutes from './routes/universities.js';
 import dataRoutes from './routes/data.js';
+import piecesRoutes from './routes/pieces.js';
 
 app.use('/api/auth', authRoutes(pool, JWT_SECRET));
 app.use('/api/universities', universitiesRoutes(pool));
 app.use('/api/data', dataRoutes(pool));
+app.use('/api/pieces', piecesRoutes(pool));
 
 // API가 아닌 요청에 대한 기본 응답
 app.get('*', (req, res) => {
@@ -111,6 +113,7 @@ app.get('*', (req, res) => {
       '/api/auth/me',
       '/api/universities',
       '/api/data/*',
+      '/api/pieces/*',
       '/health',
       '/db-test'
     ]
