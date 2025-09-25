@@ -20,7 +20,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// DB 연결 설정
+// DB 연결 설정 (성능 최적화)
 const dbConfig = {
   host: process.env.DB_HOST || 'pulley-cluster.cluster-ce1us4oyptfa.ap-northeast-2.rds.amazonaws.com',
   user: process.env.DB_USER || 'statisticuser',
@@ -28,12 +28,33 @@ const dbConfig = {
   database: process.env.DB_NAME || 'pulley',
   port: parseInt(process.env.DB_PORT || '3306'),
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 20, // 연결 수 증가
   queueLimit: 0,
+  acquireTimeout: 10000, // 연결 획득 타임아웃 10초
+  timeout: 10000, // 쿼리 타임아웃 10초
+  reconnect: true, // 자동 재연결
+  idleTimeout: 300000, // 유휴 연결 타임아웃 5분
+  timezone: '+09:00', // 한국 시간대 설정
 };
 
 // DB 연결 풀 생성
 const pool = mysql.createPool(dbConfig);
+
+// DB 연결 풀 워밍업 (서버 시작 시 미리 연결)
+const warmupDB = async () => {
+  try {
+    console.log('DB 연결 풀 워밍업 시작...');
+    const connection = await pool.getConnection();
+    await connection.ping();
+    connection.release();
+    console.log('DB 연결 풀 워밍업 완료');
+  } catch (error) {
+    console.error('DB 워밍업 실패:', error);
+  }
+};
+
+// 서버 시작 시 DB 워밍업 실행
+warmupDB();
 
 // JWT 시크릿
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';

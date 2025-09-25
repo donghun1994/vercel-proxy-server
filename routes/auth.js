@@ -7,6 +7,7 @@ export default (pool, JWT_SECRET) => {
 
   // 로그인
   router.post('/login', async (req, res) => {
+    let connection;
     try {
       const { email, password } = req.body;
 
@@ -17,13 +18,17 @@ export default (pool, JWT_SECRET) => {
         });
       }
 
-      // 사용자 조회
-      const [users] = await pool.execute(
-        'SELECT id, email, password, role, name FROM user WHERE email = ? AND role = "admin"',
+      // 연결 풀에서 연결 획득 (재사용 가능)
+      connection = await pool.getConnection();
+      
+      // 사용자 조회 (인덱스 최적화)
+      const [users] = await connection.execute(
+        'SELECT id, email, password, role, name FROM user WHERE email = ? AND role = "admin" LIMIT 1',
         [email]
       );
 
       if (users.length === 0) {
+        if (connection) connection.release();
         return res.status(401).json({
           success: false,
           message: '유효하지 않은 이메일 또는 비밀번호입니다.'
@@ -35,11 +40,15 @@ export default (pool, JWT_SECRET) => {
       // 비밀번호 확인
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
+        if (connection) connection.release();
         return res.status(401).json({
           success: false,
           message: '유효하지 않은 이메일 또는 비밀번호입니다.'
         });
       }
+
+      // 연결 해제
+      if (connection) connection.release();
 
       // JWT 토큰 생성
       const token = jwt.sign(
@@ -62,6 +71,7 @@ export default (pool, JWT_SECRET) => {
 
     } catch (error) {
       console.error('Login error:', error);
+      if (connection) connection.release();
       res.status(500).json({
         success: false,
         message: '로그인 중 오류가 발생했습니다.'
