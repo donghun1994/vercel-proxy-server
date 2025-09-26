@@ -8,9 +8,25 @@ import jwt from 'jsonwebtoken';
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// CORS 설정
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://university-learning-dashboard.vercel.app',
+    'https://university-learning-dashboard-git-main-donghun1994.vercel.app'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With']
+}));
+
 // 미들웨어
-app.use(cors());
 app.use(express.json());
+
+// OPTIONS 요청 처리
+app.options('*', (req, res) => {
+  res.status(200).end();
+});
 
 // 캐시 방지 미들웨어
 app.use((req, res, next) => {
