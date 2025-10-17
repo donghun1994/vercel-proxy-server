@@ -10,11 +10,28 @@ const PORT = process.env.PORT || 10000;
 
 // CORS 설정
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://university-learning-dashboard.vercel.app',
-    'https://university-learning-dashboard-git-main-donghun1994.vercel.app'
-  ],
+  origin: function (origin, callback) {
+    // 로컬 개발 환경 허용
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://university-learning-dashboard.vercel.app',
+      'https://university-learning-dashboard-git-main-donghun1994.vercel.app'
+    ];
+    
+    // Vercel 서브도메인 허용
+    if (origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // 허용된 origin 목록에 있는지 확인
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'X-Requested-With']
