@@ -180,25 +180,6 @@ const dataRoutes = (pool) => {
 
       const offset = (pageNum - 1) * limitNum;
 
-      console.log('Daily problem history query:', {
-        universityId: universityIdNum,
-        startDate,
-        endDate,
-        page: pageNum,
-        limit: limitNum,
-        offset
-      });
-
-      // 간단한 테스트 쿼리 먼저 실행
-      const [testResult] = await pool.execute(
-        `SELECT COUNT(*) as count
-        FROM pulley_statistic.htht_daily_piece_problem_history 
-        WHERE university_id = ?`,
-        [universityIdNum]
-      );
-      
-      console.log('Test query result:', testResult);
-
       // daily-problem-history는 단일 테이블에서 모든 데이터 조회
       const [historyResult] = await pool.execute(
         `SELECT 
@@ -211,18 +192,18 @@ const dataRoutes = (pool) => {
           study_type,
           piece_name,
           subject_group,
-          total_questions,
-          original_questions,
-          similar_questions,
-          total_solved,
-          original_solved,
-          similar_solved,
-          original_correct,
-          similar_correct,
-          total_correct,
-          total_accuracy,
-          original_accuracy,
-          similar_accuracy
+          CAST(total_questions AS UNSIGNED) as total_questions,
+          CAST(original_questions AS UNSIGNED) as original_questions,
+          CAST(similar_questions AS UNSIGNED) as similar_questions,
+          CAST(total_solved AS UNSIGNED) as total_solved,
+          CAST(original_solved AS UNSIGNED) as original_solved,
+          CAST(similar_solved AS UNSIGNED) as similar_solved,
+          CAST(original_correct AS UNSIGNED) as original_correct,
+          CAST(similar_correct AS UNSIGNED) as similar_correct,
+          CAST(total_correct AS UNSIGNED) as total_correct,
+          CAST(total_accuracy AS DECIMAL(5,2)) as total_accuracy,
+          CAST(original_accuracy AS DECIMAL(5,2)) as original_accuracy,
+          CAST(similar_accuracy AS DECIMAL(5,2)) as similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history 
         WHERE university_id = ? AND study_date BETWEEN ? AND ?
         ORDER BY study_date DESC
@@ -241,10 +222,27 @@ const dataRoutes = (pool) => {
       const total = countResult[0].total;
       const totalPages = Math.ceil(total / limitNum);
 
+      // 데이터 타입 변환 (문자열을 숫자로)
+      const processedHistory = historyResult.map(row => ({
+        ...row,
+        total_questions: Number(row.total_questions) || 0,
+        original_questions: Number(row.original_questions) || 0,
+        similar_questions: Number(row.similar_questions) || 0,
+        total_solved: Number(row.total_solved) || 0,
+        original_solved: Number(row.original_solved) || 0,
+        similar_solved: Number(row.similar_solved) || 0,
+        original_correct: Number(row.original_correct) || 0,
+        similar_correct: Number(row.similar_correct) || 0,
+        total_correct: Number(row.total_correct) || 0,
+        total_accuracy: Number(row.total_accuracy) || 0,
+        original_accuracy: Number(row.original_accuracy) || 0,
+        similar_accuracy: Number(row.similar_accuracy) || 0
+      }));
+
       res.json({
         success: true,
         data: {
-          history: historyResult,
+          history: processedHistory,
           pagination: {
             currentPage: pageNum,
             totalPages,
@@ -307,16 +305,6 @@ const dataRoutes = (pool) => {
       const offset = (pageNum - 1) * limitNum;
       const placeholders = lectureIdArray.map(() => '?').join(',');
 
-      console.log('Lecture history query:', {
-        universityId: universityIdNum,
-        lectureIds: lectureIdArray,
-        startDate,
-        endDate,
-        page: pageNum,
-        limit: limitNum,
-        offset
-      });
-
       const [historyResult] = await pool.execute(
         `SELECT 
           h.study_date,
@@ -329,18 +317,18 @@ const dataRoutes = (pool) => {
           h.piece_name,
           h.subject_group,
           l.name as lecture_name,
-          h.total_questions,
-          h.original_questions,
-          h.similar_questions,
-          h.total_solved,
-          h.original_solved,
-          h.similar_solved,
-          h.original_correct,
-          h.similar_correct,
-          h.total_correct,
-          h.total_accuracy,
-          h.original_accuracy,
-          h.similar_accuracy
+          CAST(h.total_questions AS UNSIGNED) as total_questions,
+          CAST(h.original_questions AS UNSIGNED) as original_questions,
+          CAST(h.similar_questions AS UNSIGNED) as similar_questions,
+          CAST(h.total_solved AS UNSIGNED) as total_solved,
+          CAST(h.original_solved AS UNSIGNED) as original_solved,
+          CAST(h.similar_solved AS UNSIGNED) as similar_solved,
+          CAST(h.original_correct AS UNSIGNED) as original_correct,
+          CAST(h.similar_correct AS UNSIGNED) as similar_correct,
+          CAST(h.total_correct AS UNSIGNED) as total_correct,
+          CAST(h.total_accuracy AS DECIMAL(5,2)) as total_accuracy,
+          CAST(h.original_accuracy AS DECIMAL(5,2)) as original_accuracy,
+          CAST(h.similar_accuracy AS DECIMAL(5,2)) as similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history h
         INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
         INNER JOIN pulley.lecture l ON m.lecture_id = l.id
@@ -364,10 +352,27 @@ const dataRoutes = (pool) => {
       const total = countResult[0].total;
       const totalPages = Math.ceil(total / limitNum);
 
+      // 데이터 타입 변환 (문자열을 숫자로)
+      const processedHistory = historyResult.map(row => ({
+        ...row,
+        total_questions: Number(row.total_questions) || 0,
+        original_questions: Number(row.original_questions) || 0,
+        similar_questions: Number(row.similar_questions) || 0,
+        total_solved: Number(row.total_solved) || 0,
+        original_solved: Number(row.original_solved) || 0,
+        similar_solved: Number(row.similar_solved) || 0,
+        original_correct: Number(row.original_correct) || 0,
+        similar_correct: Number(row.similar_correct) || 0,
+        total_correct: Number(row.total_correct) || 0,
+        total_accuracy: Number(row.total_accuracy) || 0,
+        original_accuracy: Number(row.original_accuracy) || 0,
+        similar_accuracy: Number(row.similar_accuracy) || 0
+      }));
+
       res.json({
         success: true,
         data: {
-          history: historyResult,
+          history: processedHistory,
           pagination: {
             currentPage: pageNum,
             totalPages,
@@ -431,18 +436,18 @@ const dataRoutes = (pool) => {
           h.piece_name,
           h.subject_group,
           l.name as lecture_name,
-          h.total_questions,
-          h.original_questions,
-          h.similar_questions,
-          h.total_solved,
-          h.original_solved,
-          h.similar_solved,
-          h.original_correct,
-          h.similar_correct,
-          h.total_correct,
-          h.total_accuracy,
-          h.original_accuracy,
-          h.similar_accuracy
+          CAST(h.total_questions AS UNSIGNED) as total_questions,
+          CAST(h.original_questions AS UNSIGNED) as original_questions,
+          CAST(h.similar_questions AS UNSIGNED) as similar_questions,
+          CAST(h.total_solved AS UNSIGNED) as total_solved,
+          CAST(h.original_solved AS UNSIGNED) as original_solved,
+          CAST(h.similar_solved AS UNSIGNED) as similar_solved,
+          CAST(h.original_correct AS UNSIGNED) as original_correct,
+          CAST(h.similar_correct AS UNSIGNED) as similar_correct,
+          CAST(h.total_correct AS UNSIGNED) as total_correct,
+          CAST(h.total_accuracy AS DECIMAL(5,2)) as total_accuracy,
+          CAST(h.original_accuracy AS DECIMAL(5,2)) as original_accuracy,
+          CAST(h.similar_accuracy AS DECIMAL(5,2)) as similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history h
         INNER JOIN pulley.lecture_student_mapping m ON h.htht_university_user_id = m.htht_university_user_id
         INNER JOIN pulley.lecture l ON m.lecture_id = l.id
@@ -531,18 +536,18 @@ const dataRoutes = (pool) => {
           study_type,
           piece_name,
           subject_group,
-          total_questions,
-          original_questions,
-          similar_questions,
-          total_solved,
-          original_solved,
-          similar_solved,
-          original_correct,
-          similar_correct,
-          total_correct,
-          total_accuracy,
-          original_accuracy,
-          similar_accuracy
+          CAST(total_questions AS UNSIGNED) as total_questions,
+          CAST(original_questions AS UNSIGNED) as original_questions,
+          CAST(similar_questions AS UNSIGNED) as similar_questions,
+          CAST(total_solved AS UNSIGNED) as total_solved,
+          CAST(original_solved AS UNSIGNED) as original_solved,
+          CAST(similar_solved AS UNSIGNED) as similar_solved,
+          CAST(original_correct AS UNSIGNED) as original_correct,
+          CAST(similar_correct AS UNSIGNED) as similar_correct,
+          CAST(total_correct AS UNSIGNED) as total_correct,
+          CAST(total_accuracy AS DECIMAL(5,2)) as total_accuracy,
+          CAST(original_accuracy AS DECIMAL(5,2)) as original_accuracy,
+          CAST(similar_accuracy AS DECIMAL(5,2)) as similar_accuracy
         FROM pulley_statistic.htht_daily_piece_problem_history 
         WHERE university_id = ? AND study_date BETWEEN ? AND ?
         ORDER BY study_date DESC, account`,
