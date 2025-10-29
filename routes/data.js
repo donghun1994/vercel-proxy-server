@@ -57,7 +57,6 @@ const dataRoutes = (pool) => {
       const [statsResult] = await pool.execute(
         `SELECT 
           SUM(total_questions) as total_questions,
-          SUM(total_solved) as total_solved,
           SUM(total_correct) as total_correct,
           AVG(total_accuracy) as avg_accuracy,
           AVG(original_accuracy) as avg_original_accuracy,
@@ -73,11 +72,8 @@ const dataRoutes = (pool) => {
         success: true,
         data: {
           totalProblems: Number(stats.total_questions || 0),
-          totalSolved: Number(stats.total_solved || 0),
           totalCorrect: Number(stats.total_correct || 0),
-          averageRate: Number(stats.total_questions || 0) > 0 
-            ? (Number(stats.total_solved || 0) / Number(stats.total_questions || 0)) * 100 
-            : 0,
+          averageRate: Number(stats.avg_accuracy || 0),
           originalRate: Number(stats.avg_original_accuracy || 0),
           similarRate: Number(stats.avg_similar_accuracy || 0)
         }
@@ -118,7 +114,6 @@ const dataRoutes = (pool) => {
       const [statsResult] = await pool.execute(
         `SELECT 
           SUM(h.total_questions) as total_questions,
-          SUM(h.total_solved) as total_solved,
           SUM(h.total_correct) as total_correct,
           AVG(h.total_accuracy) as avg_accuracy,
           AVG(h.original_accuracy) as avg_original_accuracy,
@@ -137,7 +132,6 @@ const dataRoutes = (pool) => {
         success: true,
         data: {
           totalProblems: Number(stats.total_questions || 0),
-          totalSolved: Number(stats.total_solved || 0),
           totalCorrect: Number(stats.total_correct || 0),
           averageRate: Number(stats.avg_accuracy || 0),
           originalRate: Number(stats.avg_original_accuracy || 0),
@@ -183,7 +177,7 @@ const dataRoutes = (pool) => {
       // daily-problem-history는 단일 테이블에서 모든 데이터 조회
       const [historyResult] = await pool.execute(
         `SELECT 
-          study_date,
+          DATE_FORMAT(study_date, '%Y-%m-%d') as study_date,
           university_id,
           school_name,
           account,
@@ -302,7 +296,7 @@ const dataRoutes = (pool) => {
 
       const [historyResult] = await pool.execute(
         `SELECT 
-          h.study_date,
+          DATE_FORMAT(h.study_date, '%Y-%m-%d') as study_date,
           h.university_id,
           h.school_name,
           h.account,
@@ -418,7 +412,7 @@ const dataRoutes = (pool) => {
 
       const [downloadResult] = await pool.execute(
         `SELECT 
-          h.study_date,
+          DATE_FORMAT(h.study_date, '%Y-%m-%d') as study_date,
           h.university_id,
           h.school_name,
           h.account,
@@ -459,7 +453,7 @@ const dataRoutes = (pool) => {
       
       downloadResult.forEach(row => {
         const csvRow = [
-          row.study_date ? new Date(row.study_date).toISOString().split('T')[0] : '',
+          row.study_date || '',
           row.university_id,
           `"${row.school_name || ''}"`,
           `"${row.account || ''}"`,
@@ -518,7 +512,7 @@ const dataRoutes = (pool) => {
 
       const [downloadResult] = await pool.execute(
         `SELECT 
-          study_date,
+          DATE_FORMAT(study_date, '%Y-%m-%d') as study_date,
           university_id,
           school_name,
           account,
@@ -555,7 +549,7 @@ const dataRoutes = (pool) => {
       
       downloadResult.forEach(row => {
         const csvRow = [
-          row.study_date ? new Date(row.study_date).toISOString().split('T')[0] : '',
+          row.study_date || '',
           row.university_id,
           `"${row.school_name || ''}"`,
           `"${row.account || ''}"`,
