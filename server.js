@@ -1,9 +1,6 @@
 import express from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import mysql from 'mysql2/promise';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -54,35 +51,82 @@ app.use((req, res, next) => {
 });
 
 // DB 연결 설정 (성능 최적화)
-const dbConfig = {
+// Connection 옵션 (실제 DB 연결 설정)
+const connectionConfig = {
   host: process.env.DB_HOST || 'pulley-cluster.cluster-ce1us4oyptfa.ap-northeast-2.rds.amazonaws.com',
   user: process.env.DB_USER || 'statisticuser',
   password: process.env.DB_PASSWORD || 'pulley1234',
   database: process.env.DB_NAME || 'pulley',
   port: parseInt(process.env.DB_PORT || '3306'),
+  timezone: '+09:00', // 한국 시간대 설정
+  connectTimeout: 60000, // 연결 타임아웃 60초 (Render.com 네트워크 지연 대응)
+  // SSL 설정 (RDS는 SSL을 요구할 수 있음)
+  ssl: process.env.DB_SSL === 'true' ? {
+    rejectUnauthorized: false // 자체 서명 인증서 허용
+  } : false,
+  // 연결 옵션
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+};
+
+// Pool 옵션 (연결 풀 설정)
+const poolConfig = {
+  ...connectionConfig,
   waitForConnections: true,
   connectionLimit: 20, // 연결 수 증가
   queueLimit: 0,
-  acquireTimeout: 10000, // 연결 획득 타임아웃 10초
-  timeout: 10000, // 쿼리 타임아웃 10초
-  reconnect: true, // 자동 재연결
+  acquireTimeout: 60000, // 연결 획득 타임아웃 60초
   idleTimeout: 300000, // 유휴 연결 타임아웃 5분
-  timezone: '+09:00', // 한국 시간대 설정
 };
 
 // DB 연결 풀 생성
-const pool = mysql.createPool(dbConfig);
+const pool = mysql.createPool(poolConfig);
 
 // DB 연결 풀 워밍업 (서버 시작 시 미리 연결)
 const warmupDB = async () => {
-  try {
-    console.log('DB 연결 풀 워밍업 시작...');
-    const connection = await pool.getConnection();
-    await connection.ping();
-    connection.release();
-    console.log('DB 연결 풀 워밍업 완료');
-  } catch (error) {
-    console.error('DB 워밍업 실패:', error);
+  let retries = 3;
+  let delay = 2000; // 2초
+  
+  console.log('DB 연결 설정:', {
+    host: connectionConfig.host,
+    port: connectionConfig.port,
+    database: connectionConfig.database,
+    user: connectionConfig.user,
+    connectTimeout: connectionConfig.connectTimeout,
+    ssl: connectionConfig.ssl ? 'enabled' : 'disabled'
+  });
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`DB 연결 풀 워밍업 시작... (시도 ${i + 1}/${retries})`);
+      const startTime = Date.now();
+      const connection = await pool.getConnection();
+      await connection.ping();
+      const duration = Date.now() - startTime;
+      connection.release();
+      console.log(`DB 연결 풀 워밍업 완료 (소요 시간: ${duration}ms)`);
+      return;
+    } catch (error) {
+      console.error(`DB 워밍업 실패 (시도 ${i + 1}/${retries}):`, error.message);
+      console.error('에러 상세:', {
+        code: error.code,
+        errno: error.errno,
+        sqlState: error.sqlState,
+        sqlMessage: error.sqlMessage,
+        syscall: error.syscall,
+        address: error.address,
+        port: error.port
+      });
+      
+      if (i < retries - 1) {
+        console.log(`${delay}ms 후 재시도...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // 지수 백오프
+      } else {
+        console.error('DB 워밍업 최종 실패 - 서버는 시작되지만 DB 연결이 필요할 때 다시 시도됩니다.');
+        console.error('⚠️  RDS 보안 그룹에서 Render.com IP를 허용했는지 확인하세요.');
+      }
+    }
   }
 };
 
@@ -104,23 +148,42 @@ app.get('/health', (req, res) => {
 
 // DB 연결 테스트
 app.get('/db-test', async (req, res) => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
+    console.log('DB 연결 테스트 시작...');
+    const startTime = Date.now();
+    connection = await pool.getConnection();
     const [rows] = await connection.execute('SELECT 1 as test');
+    const duration = Date.now() - startTime;
     connection.release();
     
+    console.log(`DB 연결 성공 (소요 시간: ${duration}ms)`);
     res.json({ 
       success: true, 
       message: 'Database connection successful',
       data: rows,
+      duration: `${duration}ms`,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    if (connection) connection.release();
     console.error('Database connection error:', error);
+    console.error('에러 상세:', {
+      code: error.code,
+      errno: error.errno,
+      sqlState: error.sqlState,
+      sqlMessage: error.sqlMessage,
+      message: error.message,
+      syscall: error.syscall,
+      address: error.address,
+      port: error.port
+    });
     res.status(500).json({ 
       success: false, 
       message: 'Database connection failed',
-      error: error.message 
+      error: error.message,
+      code: error.code,
+      errno: error.errno
     });
   }
 });
