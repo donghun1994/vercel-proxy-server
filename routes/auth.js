@@ -2,7 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-export default (pool, JWT_SECRET) => {
+const authRoutes = (pool, JWT_SECRET) => {
   const router = express.Router();
 
   // 로그인
@@ -70,11 +70,29 @@ export default (pool, JWT_SECRET) => {
       });
 
     } catch (error) {
+      // 상세한 에러 로깅
       console.error('Login error:', error);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      console.error('Request body:', { email: req.body?.email, hasPassword: !!req.body?.password });
+      console.error('DB config check:', {
+        hasHost: !!process.env.DB_HOST,
+        hasUser: !!process.env.DB_USER,
+        hasPassword: !!process.env.DB_PASSWORD,
+        hasJWTSecret: !!process.env.JWT_SECRET
+      });
+      
       if (connection) connection.release();
+      
+      // 개발 환경에서는 더 자세한 에러 정보 제공
+      const isDevelopment = process.env.NODE_ENV === 'development';
       res.status(500).json({
         success: false,
-        message: '로그인 중 오류가 발생했습니다.'
+        message: '로그인 중 오류가 발생했습니다.',
+        ...(isDevelopment && {
+          error: error.message,
+          stack: error.stack
+        })
       });
     }
   });
@@ -130,3 +148,5 @@ export default (pool, JWT_SECRET) => {
 
   return router;
 };
+
+export default authRoutes;

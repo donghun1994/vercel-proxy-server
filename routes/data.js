@@ -3,6 +3,33 @@ import express from 'express';
 const dataRoutes = (pool) => {
   const router = express.Router();
 
+  // 공통 설정
+  const MAX_LIMIT = 200;
+
+  const parsePagingParams = (page = 1, limit = 20) => {
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(MAX_LIMIT, Math.max(1, parseInt(limit)));
+    return { pageNum, limitNum, offset: (pageNum - 1) * limitNum };
+  };
+
+  // 로컬 타임존(서버 시간)을 그대로 사용해 파일명에 표기
+  const formatKstNow = () => {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    return { display: `${yyyy}-${mm}-${dd} ${hh}시 ${min}분`, iso: now.toISOString() };
+  };
+
+  const validateDateRange = (startDate, endDate) => {
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      return false;
+    }
+    return true;
+  };
+
   // 강의 목록 조회
   router.get('/lectures', async (req, res) => {
     try {
@@ -38,6 +65,448 @@ const dataRoutes = (pool) => {
       res.status(500).json({
         success: false,
         message: '강의 목록을 가져오는 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
+  // 학습지 진행률 (학습지 기준) 조회
+  router.get('/piece-progress', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+      if (!universityId) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교를 선택해주세요.'
+        });
+      }
+
+      if (!validateDateRange(startDate, endDate)) {
+        return res.status(400).json({
+          success: false,
+          message: '학습지 생성일 기간을 모두 입력하거나 비워주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+      if (isNaN(universityIdNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 대학교입니다.'
+        });
+      }
+
+      const { pageNum, limitNum, offset } = parsePagingParams(page, limit);
+      const useDateFilter = !!(startDate && endDate);
+      const dateClause = useDateFilter ? 'AND created_at BETWEEN ? AND ?' : '';
+      const params = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+
+      const [rows] = await pool.execute(
+        `SELECT 
+          id,
+          university_id,
+          school_name,
+          htht_university_user_id,
+          account,
+          student_name,
+          student_no,
+          study_type,
+          piece_id,
+          piece_name,
+          subject_group,
+          total_questions,
+          solved_questions,
+          correct_questions,
+          DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at,
+          DATE_FORMAT(updated_at, '%Y-%m-%d') AS updated_at,
+          CASE 
+            WHEN total_questions IS NULL OR total_questions = 0 THEN 0
+            ELSE ROUND((COALESCE(solved_questions,0) / total_questions) * 100, 2)
+          END AS progress_rate
+        FROM pulley_statistic.htht_piece_process_overview
+        WHERE university_id = ?
+        ${dateClause}
+        ORDER BY created_at DESC, piece_name
+        LIMIT ${limitNum} OFFSET ${offset}`,
+        params
+      );
+
+      const countParams = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+      const [countResult] = await pool.execute(
+        `SELECT COUNT(*) AS total
+        FROM pulley_statistic.htht_piece_process_overview
+        WHERE university_id = ?
+        ${dateClause}`,
+        countParams
+      );
+
+      const total = countResult[0]?.total || 0;
+      const totalPages = Math.ceil(total / limitNum);
+
+      res.json({
+        success: true,
+        data: {
+          note: '조회시점 기준이라서 데이터가 다를 수 있습니다.',
+          items: rows,
+          pagination: {
+            currentPage: pageNum,
+            totalPages,
+            totalItems: total,
+            itemsPerPage: limitNum
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get piece progress error:', error);
+      res.status(500).json({
+        success: false,
+        message: '학습지 진행률 데이터를 가져오는 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
+  // 학습지 진행률 (학습지 기준) CSV
+  router.get('/piece-progress-download', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate, schoolName = '' } = req.query;
+
+      if (!universityId) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교를 선택해주세요.'
+        });
+      }
+
+      if (!validateDateRange(startDate, endDate)) {
+        return res.status(400).json({
+          success: false,
+          message: '학습지 생성일 기간을 모두 입력하거나 비워주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+      if (isNaN(universityIdNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 대학교입니다.'
+        });
+      }
+
+      const useDateFilter = !!(startDate && endDate);
+      const dateClause = useDateFilter ? 'AND created_at BETWEEN ? AND ?' : '';
+      const params = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+
+      const [rows] = await pool.execute(
+        `SELECT 
+          id,
+          university_id,
+          school_name,
+          htht_university_user_id,
+          account,
+          student_name,
+          student_no,
+          study_type,
+          piece_id,
+          piece_name,
+          subject_group,
+          total_questions,
+          solved_questions,
+          correct_questions,
+          DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at,
+          DATE_FORMAT(updated_at, '%Y-%m-%d') AS updated_at,
+          CASE 
+            WHEN total_questions IS NULL OR total_questions = 0 THEN 0
+            ELSE ROUND((COALESCE(solved_questions,0) / total_questions) * 100, 2)
+          END AS progress_rate
+        FROM pulley_statistic.htht_piece_process_overview
+        WHERE university_id = ?
+        ${dateClause}
+        ORDER BY created_at DESC, piece_name`,
+        params
+      );
+
+      const headers = [
+        '생성일',
+        '최근학습일',
+        '학습유형',
+        '대학교ID',
+        '학교명',
+        '대학사용자ID',
+        '계정',
+        '학생명',
+        '학번',
+        '학습지ID',
+        '학습지명',
+        '과목군',
+        '총문항수',
+        '푼문항수',
+        '정답문항수',
+        '진행률(%)'
+      ];
+      const csvRows = [headers.join(',')];
+      rows.forEach((row) => {
+        const csvRow = [
+          row.created_at ? `"${row.created_at}"` : '',
+          row.updated_at ? `"${row.updated_at}"` : '',
+          `"${row.study_type ?? ''}"`,
+          row.university_id ?? '',
+          `"${row.school_name ?? ''}"`,
+          row.htht_university_user_id ?? '',
+          `"${row.account ?? ''}"`,
+          `"${row.student_name ?? ''}"`,
+          `"${row.student_no ?? ''}"`,
+          row.piece_id ?? '',
+          `"${row.piece_name ?? ''}"`,
+          `"${row.subject_group ?? ''}"`,
+          row.total_questions ?? 0,
+          row.solved_questions ?? 0,
+          row.correct_questions ?? 0,
+          row.progress_rate ?? 0
+        ];
+        csvRows.push(csvRow.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+      const { display } = formatKstNow();
+      const safeSchool = String(schoolName || '학교').replace(/[\\/:*?"<>|]/g, '_');
+      const rawFilename = `${safeSchool} 학습지 진행률 (${display} 기준).csv`;
+      const filename = encodeURIComponent(rawFilename);
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\uFEFF' + csvContent);
+    } catch (error) {
+      console.error('Get piece progress download error:', error);
+      res.status(500).json({
+        success: false,
+        message: '학습지 진행률 CSV 생성 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
+  // 개념학습 진행률 (학습지 기준) 조회
+  router.get('/concept-progress', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+      if (!universityId) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교를 선택해주세요.'
+        });
+      }
+
+      if (!validateDateRange(startDate, endDate)) {
+        return res.status(400).json({
+          success: false,
+          message: '학습지 생성일 기간을 모두 입력하거나 비워주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+      if (isNaN(universityIdNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 대학교입니다.'
+        });
+      }
+
+      const { pageNum, limitNum, offset } = parsePagingParams(page, limit);
+      const useDateFilter = !!(startDate && endDate);
+      const dateClause = useDateFilter ? 'AND created_at BETWEEN ? AND ?' : '';
+      const params = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+      const [rows] = await pool.execute(
+        `SELECT 
+          id,
+          university_id,
+          school_name,
+          htht_university_user_id,
+          account,
+          student_name,
+          student_no,
+          subject_group,
+          concept_chapter_id,
+          subject_name,
+          chapter_name,
+          total_questions,
+          solved_questions,
+          correct_questions,
+          DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at,
+          DATE_FORMAT(updated_at, '%Y-%m-%d') AS updated_at,
+          CASE 
+            WHEN total_questions IS NULL OR total_questions = 0 THEN 0
+            ELSE ROUND((COALESCE(solved_questions,0) / total_questions) * 100, 2)
+          END AS progress_rate
+        FROM pulley_statistic.htht_concept_process_overview
+        WHERE university_id = ?
+        ${dateClause}
+        ORDER BY created_at DESC, concept_chapter_id
+        LIMIT ${limitNum} OFFSET ${offset}`,
+        params
+      );
+
+      const countParams = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+      const [countResult] = await pool.execute(
+        `SELECT COUNT(*) AS total
+        FROM pulley_statistic.htht_concept_process_overview
+        WHERE university_id = ?
+        ${dateClause}`,
+        countParams
+      );
+
+      const total = countResult[0]?.total || 0;
+      const totalPages = Math.ceil(total / limitNum);
+
+      res.json({
+        success: true,
+        data: {
+          note: '조회시점 기준이라서 데이터가 다를 수 있습니다.',
+          items: rows,
+          pagination: {
+            currentPage: pageNum,
+            totalPages,
+            totalItems: total,
+            itemsPerPage: limitNum
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get concept progress error:', error);
+      res.status(500).json({
+        success: false,
+        message: '개념학습 진행률 데이터를 가져오는 중 오류가 발생했습니다.'
+      });
+    }
+  });
+
+  // 개념학습 진행률 (학습지 기준) CSV
+  router.get('/concept-progress-download', async (req, res) => {
+    try {
+      const { universityId, startDate, endDate, schoolName = '' } = req.query;
+
+      if (!universityId) {
+        return res.status(400).json({
+          success: false,
+          message: '대학교를 선택해주세요.'
+        });
+      }
+
+      if (!validateDateRange(startDate, endDate)) {
+        return res.status(400).json({
+          success: false,
+          message: '학습지 생성일 기간을 모두 입력하거나 비워주세요.'
+        });
+      }
+
+      const universityIdNum = parseInt(universityId);
+      if (isNaN(universityIdNum)) {
+        return res.status(400).json({
+          success: false,
+          message: '유효하지 않은 대학교입니다.'
+        });
+      }
+
+      const useDateFilter = !!(startDate && endDate);
+      const dateClause = useDateFilter ? 'AND created_at BETWEEN ? AND ?' : '';
+      const params = useDateFilter
+        ? [universityIdNum, startDate, endDate]
+        : [universityIdNum];
+
+      const [rows] = await pool.execute(
+        `SELECT 
+          id,
+          university_id,
+          school_name,
+          htht_university_user_id,
+          account,
+          student_name,
+          student_no,
+          subject_group,
+          concept_chapter_id,
+          subject_name,
+          chapter_name,
+          total_questions,
+          solved_questions,
+          correct_questions,
+          DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at,
+          DATE_FORMAT(updated_at, '%Y-%m-%d') AS updated_at,
+          CASE 
+            WHEN total_questions IS NULL OR total_questions = 0 THEN 0
+            ELSE ROUND((COALESCE(solved_questions,0) / total_questions) * 100, 2)
+          END AS progress_rate
+        FROM pulley_statistic.htht_concept_process_overview
+        WHERE university_id = ?
+        ${dateClause}
+        ORDER BY created_at DESC, concept_chapter_id`,
+        params
+      );
+
+      const headers = [
+        'id',
+        'university_id',
+        'school_name',
+        'htht_university_user_id',
+        'account',
+        'student_name',
+        'student_no',
+        'subject_group',
+        'concept_chapter_id',
+        'subject_name',
+        'chapter_name',
+        'total_questions',
+        'solved_questions',
+        'correct_questions',
+        'created_at',
+        'updated_at'
+      ];
+      const csvRows = [headers.join(',')];
+      rows.forEach((row) => {
+        const csvRow = [
+          row.id ?? '',
+          row.university_id ?? '',
+          `"${row.school_name ?? ''}"`,
+          row.htht_university_user_id ?? '',
+          `"${row.account ?? ''}"`,
+          `"${row.student_name ?? ''}"`,
+          `"${row.student_no ?? ''}"`,
+          `"${row.subject_group ?? ''}"`,
+          `"${row.concept_chapter_id ?? ''}"`,
+        `"${row.subject_name ?? ''}"`,
+        `"${row.chapter_name ?? ''}"`,
+          row.total_questions ?? 0,
+          row.solved_questions ?? 0,
+          row.correct_questions ?? 0,
+          row.created_at ? `"${row.created_at}"` : '',
+          row.updated_at ? `"${row.updated_at}"` : '',
+          
+        ];
+        csvRows.push(csvRow.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+      const { display } = formatKstNow();
+      const safeSchool = String(schoolName || '학교').replace(/[\\/:*?"<>|]/g, '_');
+      const rawFilename = `${safeSchool} 개념학습 진행률 (${display} 기준).csv`;
+      const filename = encodeURIComponent(rawFilename);
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\uFEFF' + csvContent);
+    } catch (error) {
+      console.error('Get concept progress download error:', error);
+      res.status(500).json({
+        success: false,
+        message: '개념학습 진행률 CSV 생성 중 오류가 발생했습니다.'
       });
     }
   });
