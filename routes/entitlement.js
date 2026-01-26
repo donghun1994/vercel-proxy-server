@@ -64,7 +64,7 @@ const entitlementRoutes = (pool) => {
         COALESCE(middle_chapter_name, '-') AS display_middle_chapter_name,
         COALESCE(small_chapter_name, '-') AS display_small_chapter_name,
         COALESCE(unit_name, '-') AS display_unit_name
-      FROM pulley_statistic.htht_problem_entitlement
+      FROM pulley_statistic.htht_problem_entitlement_current
       WHERE subject_group = ?
       ${subjectFilter}
       ORDER BY display_subject_name, display_large_chapter_name, display_middle_chapter_name, display_small_chapter_name, display_unit_name
@@ -105,7 +105,7 @@ const entitlementRoutes = (pool) => {
 
       const [countRows] = await pool.execute(
         `SELECT COUNT(*) AS total
-         FROM pulley_statistic.htht_problem_entitlement
+         FROM pulley_statistic.htht_problem_entitlement_current
          WHERE subject_group = ?
          ${subjectIdArray.length ? `AND subject_id IN (${subjectIdArray.map(() => '?').join(',')})` : ''}`,
         countParams
@@ -231,7 +231,7 @@ const entitlementRoutes = (pool) => {
           subject_category,
           COUNT(DISTINCT subject_name) AS subject_count,
           COUNT(*) AS row_count
-        FROM pulley_statistic.htht_concept_entitlement
+        FROM pulley_statistic.htht_problem_entitlement_current
         WHERE subject_group = ?
         GROUP BY subject_group, subject_category
         ORDER BY subject_category
@@ -287,7 +287,7 @@ const entitlementRoutes = (pool) => {
           COALESCE(middle_chapter_name, '-') AS middle_chapter_name,
           COALESCE(small_chapter_name, '-') AS small_chapter_name,
           COUNT(*) AS concept_count
-        FROM pulley_statistic.htht_concept_entitlement
+        FROM pulley_statistic.htht_concept_entitlement_current
         WHERE subject_group = ?
         ${categoryFilter}
         GROUP BY subject_group, subject_category, subject_name, large_chapter_name, middle_chapter_name, small_chapter_name
@@ -301,7 +301,7 @@ const entitlementRoutes = (pool) => {
         `
         SELECT COUNT(*) AS total FROM (
           SELECT 1
-          FROM pulley_statistic.htht_concept_entitlement
+          FROM pulley_statistic.htht_concept_entitlement_current
           WHERE subject_group = ?
           ${categoryFilter}
           GROUP BY subject_group, subject_category, subject_name, large_chapter_name, middle_chapter_name, small_chapter_name
@@ -367,7 +367,7 @@ const entitlementRoutes = (pool) => {
           COALESCE(middle_chapter_name, '-') AS middle_chapter_name,
           COALESCE(small_chapter_name, '-') AS small_chapter_name,
           COUNT(*) AS concept_count
-        FROM pulley_statistic.htht_concept_entitlement
+        FROM pulley_statistic.htht_concept_entitlement_current
         WHERE subject_group = ?
         ${categoryFilter}
         GROUP BY subject_group, subject_category, subject_name, large_chapter_name, middle_chapter_name, small_chapter_name
